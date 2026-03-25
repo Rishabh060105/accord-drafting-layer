@@ -2,95 +2,133 @@ import { DraftField, DraftTemplate, ExtractedContract } from "./types";
 
 const DEFAULT_NAMESPACE = "org.accordproject.agenticdrafting@0.0.1";
 
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
 function toHeadline(value: string): string {
   return value.replace(/([a-z])([A-Z])/g, "$1 $2").trim();
 }
 
-function buildIntroduction(fields: DraftField[]): string[] {
+function hasField(fields: DraftField[], name: string): boolean {
+  return fields.some((f) => f.name === name);
+}
+
+// ─── Template Text Generation ─────────────────────────────────────────────────
+
+function buildIntroduction(extracted: ExtractedContract): string[] {
+  const { parties, fields, obligations } = extracted;
   const lines: string[] = [];
 
-  if (fields.some((field) => field.name === "buyer") && fields.some((field) => field.name === "seller")) {
-    lines.push("This draft agreement is made between {{buyer}} and {{seller}}.");
-  } else if (fields.some((field) => field.name === "buyer")) {
-    lines.push("This draft agreement names {{buyer}} as the buyer.");
-  } else if (fields.some((field) => field.name === "seller")) {
-    lines.push("This draft agreement names {{seller}} as the seller.");
+  const hasParty = (p: string) => parties.includes(p) && hasField(fields, p);
+
+  // Derive intro from obligations if available, otherwise fall back to parties
+  if (obligations.length > 0) {
+    for (const ob of obligations) {
+      const actor = `{{${ob.actor}}}`;
+      const action = ob.action;
+      // Reference target only if it's a known party field, otherwise omit
+      const targetRef = ob.target && hasField(fields, ob.target) ? ` {{${ob.target}}}` : "";
+      const timeClause = hasField(fields, "timeAmount")
+        ? ` within {{timeAmount}} {{timeUnit}}`
+        : "";
+      const eventClause = hasField(fields, "referenceEvent")
+        ? ` after {{referenceEvent}}`
+        : "";
+
+      lines.push(
+        `The ${actor} shall ${action}${targetRef}${timeClause}${eventClause}.`
+      );
+    }
+  } else {
+    // Fallback to simple party intro
+    if (hasParty("buyer") && hasParty("seller")) {
+      lines.push("This draft agreement is made between {{buyer}} and {{seller}}.");
+    } else if (hasParty("buyer")) {
+      lines.push("This draft agreement names {{buyer}} as the buyer.");
+    } else if (hasParty("seller")) {
+      lines.push("This draft agreement names {{seller}} as the seller.");
+    }
   }
 
-  if (fields.some((field) => field.name === "shipper")) {
+  if (hasParty("shipper")) {
     lines.push("The shipper for this transaction is {{shipper}}.");
   }
-
-  if (fields.some((field) => field.name === "receiver")) {
+  if (hasParty("receiver")) {
     lines.push("The receiver for this transaction is {{receiver}}.");
   }
 
   return lines;
 }
 
-function buildOperationalClauses(fields: DraftField[]): string[] {
+function buildConditionClauses(extracted: ExtractedContract): string[] {
+  const { conditions, fields } = extracted;
   const lines: string[] = [];
 
-  if (fields.some((field) => field.name === "goodsDescription")) {
+  if (conditions.length > 0 && hasField(fields, "conditionExpression")) {
+    const firstCond = conditions[0];
+    const keyword = firstCond.type === "in_case" ? "In the event that" : firstCond.type.charAt(0).toUpperCase() + firstCond.type.slice(1);
+    lines.push(`${keyword} {{conditionExpression}}, the terms below shall apply.`);
+  }
+
+  return lines;
+}
+
+function buildOperationalClauses(extracted: ExtractedContract): string[] {
+  const { fields } = extracted;
+  const lines: string[] = [];
+
+  if (hasField(fields, "goodsDescription")) {
     lines.push("The goods covered by this agreement are described as {{goodsDescription}}.");
   }
-
-  if (fields.some((field) => field.name === "deliveryDate")) {
+  if (hasField(fields, "deliveryDate")) {
     lines.push("Delivery is scheduled for {{deliveryDate}}.");
   }
-
-  if (fields.some((field) => field.name === "deliveryDeadline")) {
-    lines.push("The applicable delivery deadline is {{deliveryDeadline}}.");
+  if (hasField(fields, "timeAmount") && !extracted.obligations.length) {
+    // Only emit a generic payment clause if no obligation already covered it
+    lines.push("Payment is due within {{timeAmount}} {{timeUnit}} after {{referenceEvent}}.");
   }
-
-  if (fields.some((field) => field.name === "paymentDueDays")) {
-    lines.push("Payment is due within {{paymentDueDays}} days after delivery.");
-  }
-
-  if (fields.some((field) => field.name === "responseHours")) {
+  if (hasField(fields, "responseHours")) {
     lines.push("Any required response must be provided within {{responseHours}} hours.");
   }
-
-  if (fields.some((field) => field.name === "inspectionPassed")) {
+  if (hasField(fields, "inspectionPassed")) {
     lines.push("Inspection passed: {{inspectionPassed}}.");
   }
-
-  if (fields.some((field) => field.name === "deliveryAccepted")) {
-    lines.push("Delivery accepted: {{deliveryAccepted}}.");
-  }
-
-  if (fields.some((field) => field.name === "penaltyDescription")) {
+  if (hasField(fields, "penaltyDescription")) {
     lines.push("Penalty terms: {{penaltyDescription}}.");
   }
-
-  if (fields.some((field) => field.name === "agreementSummary")) {
+  if (hasField(fields, "agreementSummary")) {
     lines.push("Agreement summary: {{agreementSummary}}.");
   }
 
   return lines;
 }
 
-function buildTemplateText(contractName: string, fields: DraftField[]): string {
+function buildTemplateText(contractName: string, extracted: ExtractedContract): string {
   const sections = [
     `# ${toHeadline(contractName)}`,
     "",
-    ...buildIntroduction(fields),
-    ...buildOperationalClauses(fields),
+    ...buildConditionClauses(extracted),
+    ...buildIntroduction(extracted),
+    ...buildOperationalClauses(extracted),
   ].filter((line, index, lines) => {
-    if (line !== "") {
-      return true;
-    }
-
+    if (line !== "") return true;
     return index > 0 && lines[index - 1] !== "";
   });
 
   return `${sections.join("\n")}\n`;
 }
 
-function buildModelText(contractName: string, namespace: string, fields: DraftField[]): string {
-  const fieldLines = fields.map((field) => `  o ${field.type} ${field.name}`);
+// ─── Model Generation ─────────────────────────────────────────────────────────
 
-  return `${[
+function buildModelText(
+  contractName: string,
+  namespace: string,
+  fields: DraftField[]
+): string {
+  const fieldLines = fields.map(
+    (f) => `  o ${f.type} ${f.name}${f.optional ? " optional" : ""}`
+  );
+
+  return [
     `namespace ${namespace}`,
     "",
     "@template",
@@ -98,25 +136,38 @@ function buildModelText(contractName: string, namespace: string, fields: DraftFi
     ...fieldLines,
     "}",
     "",
-  ].join("\n")}`;
+  ].join("\n");
 }
 
-function buildSampleData(contractName: string, namespace: string, fields: DraftField[]): Record<string, string | boolean | number> {
+// ─── Sample Data ──────────────────────────────────────────────────────────────
+
+function buildSampleData(
+  contractName: string,
+  namespace: string,
+  fields: DraftField[]
+): Record<string, string | boolean | number> {
   const data: Record<string, string | boolean | number> = {
     $class: `${namespace}.${contractName}`,
   };
-
-  fields.forEach((field) => {
-    data[field.name] = field.defaultValue;
-  });
-
+  for (const field of fields) {
+    if (!field.optional) {
+      data[field.name] = field.defaultValue;
+    }
+  }
   return data;
 }
 
+// ─── Public API ───────────────────────────────────────────────────────────────
+
 export function generateDraftTemplate(extracted: ExtractedContract): DraftTemplate {
-  const contractName = extracted.contractName;
+  const concepts = extracted.concepts;
+  const nameParts = concepts
+    .slice(0, 2)
+    .map((c) => c.charAt(0).toUpperCase() + c.slice(1));
+  const contractName = nameParts.join("") || "DraftContract";
   const namespace = DEFAULT_NAMESPACE;
-  const templateText = buildTemplateText(contractName, extracted.fields);
+
+  const templateText = buildTemplateText(contractName, extracted);
   const modelText = buildModelText(contractName, namespace, extracted.fields);
   const sampleData = buildSampleData(contractName, namespace, extracted.fields);
 
