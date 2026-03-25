@@ -86,6 +86,25 @@ This system introduces a deterministic drafting pipeline that:
 
 ---
 
+## Intermediate Representation (IR) Deep Dive
+
+One of the project's key innovations is the **Structured Intermediate Representation**. Before generating code, the pipeline extracts a rich JSON object from the contract brief. This ensures that the generated TemplateMark and Concerto models are perfectly aligned with the user's intent.
+
+### How it works:
+1. **Extraction**: Rule-based heuristics identify parties, time conditions, and contract-specific nouns.
+2. **Normalized Text**: The brief is cleaned and normalized for consistent processing.
+3. **Variable Mapping**: Concepts are mapped to typed fields (e.g., `String`, `Integer`, `Boolean`).
+
+#### Visual Breakdown of the IR:
+
+| Part | Description | Visual |
+| :--- | :--- | :--- |
+| **Top: Brief & Parties** | Original text and identified legal entities. | ![IR Top](./assets/ir-top.png) |
+| **Middle: Concepts & Nouns** | Extracted commercial nouns and timing conditions. | ![IR Middle](./assets/ir-middle.png) |
+| **Bottom: Typed Fields** | Final schema-ready fields with default values. | ![IR Bottom](./assets/ir-bottom.png) |
+
+---
+
 ## Core Modules
 
 ### 1. Extractor
