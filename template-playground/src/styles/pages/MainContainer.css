@@ -1,0 +1,153 @@
+.main-container {
+  @apply h-full;
+}
+
+.main-container-panel-group {
+  @apply h-full;
+}
+
+.main-container-editors-panel {
+  @apply h-full border-r border-gray-200 flex flex-col;
+}
+
+.main-container-editors-panel-group {
+  @apply h-full flex-1 min-h-0;
+}
+
+.main-container-editor-section {
+  @apply h-full flex flex-col;
+}
+
+.main-container-editor-header {
+  @apply border-b border-gray-200 px-4 py-2 text-sm font-medium flex items-center justify-between;
+}
+
+.main-container-editor-header-light {
+  @apply bg-slate-100 text-gray-700;
+}
+
+.main-container-editor-header-dark {
+  @apply bg-gray-700 text-white;
+}
+
+.main-container-editor-header-left {
+  @apply flex items-center gap-4;
+}
+
+.main-container-ai-assistant-button {
+  @apply flex cursor-pointer items-center justify-center px-4 py-1.5 h-8 text-sm bg-white border border-solid border-gray-300 rounded-md transition-all duration-300 ease-in-out hover:border-[#4096ff] hover:text-[#4096ff];
+}
+
+.main-container-ai-assistant-icon {
+  @apply size-8;
+}
+
+.main-container-editor-content {
+  @apply flex-1 overflow-hidden relative;
+}
+
+.main-container-panel-resize-handle-vertical {
+  @apply h-1 bg-gray-200 hover:bg-gray-300 transition-colors;
+}
+
+.main-container-panel-resize-handle-horizontal {
+  @apply w-1 bg-gray-200 hover:bg-gray-300 transition-colors;
+}
+
+.main-container-preview-panel {
+  @apply h-full flex flex-col;
+}
+
+.main-container-preview-header {
+  @apply border-b border-gray-200 px-4 py-2 text-sm font-medium flex justify-between items-center;
+}
+
+.main-container-preview-header-light {
+  @apply bg-slate-100 text-gray-700;
+}
+
+.main-container-preview-header-dark {
+  @apply bg-gray-700 text-white;
+}
+
+.main-container-preview-content {
+  @apply flex-1 p-4 overflow-auto;
+}
+
+.main-container-preview-text {
+  @apply text-gray-500;
+}
+
+.main-container-agreement {
+  @apply flex-1;
+}
+
+.collapse-button {
+  @apply transition-opacity duration-200;
+}
+
+.collapse-button:hover {
+  @apply opacity-70;
+}
+
+.collapse-button:active {
+  @apply opacity-50;
+}
+
+.main-container-drafting-panel {
+  @apply border-b px-4 py-3 flex flex-col gap-3 overflow-auto;
+  max-height: 20rem;
+}
+
+.main-container-drafting-header {
+  @apply flex items-start justify-between gap-4;
+}
+
+.main-container-drafting-title {
+  @apply text-sm font-semibold m-0;
+}
+
+.main-container-drafting-subtitle {
+  @apply text-xs mt-1 mb-0 leading-5;
+}
+
+.main-container-drafting-label {
+  @apply text-xs font-semibold uppercase tracking-wide;
+}
+
+.main-container-drafting-textarea {
+  @apply w-full rounded-md border px-3 py-2 text-sm resize-y;
+  min-height: 7rem;
+}
+
+.main-container-drafting-meta {
+  @apply text-xs flex flex-wrap gap-4;
+}
+
+.main-container-drafting-error {
+  @apply text-red-500;
+}
+
+.main-container-drafting-results {
+  @apply flex flex-col gap-2 text-sm;
+}
+
+.main-container-drafting-results details {
+  @apply rounded-md border px-3 py-2;
+}
+
+.main-container-drafting-results summary {
+  @apply cursor-pointer font-medium;
+}
+
+.main-container-drafting-results pre {
+  @apply mt-2 p-3 rounded-md overflow-auto text-xs whitespace-pre-wrap break-words;
+}
+
+.main-container-drafting-validation {
+  @apply mt-2 flex flex-col gap-2 text-xs;
+}
+
+.main-container-drafting-validation ul {
+  @apply m-0 pl-5;
+}
