@@ -1,6 +1,6 @@
 # Accord Drafting Layer
 
-A Deterministic Drafting Layer for the Accord Project Ecosystem
+A Deterministic, Logic-Aware Drafting Layer for the Accord Project Ecosystem
 
 ---
 
@@ -10,16 +10,14 @@ This project introduces a drafting layer that bridges the gap between natural la
 
 **Natural Language Contract Intent** → **Executable Accord Templates**
 
-![Drafting Pipeline in Action](./assets/drafting-demo.png)
+![Drafting Pipeline in Action](/Users/rishabhjain/.gemini/antigravity/brain/dbb30dbf-a0a8-4c5e-ad6f-bac944461cef/drafting_pipeline_results_1774456108367.png)
 
 It enables users to input a plain-English contract brief and automatically generate:
 
 * **TemplateMark** (`grammar.tem.md`)
 * **Concerto model** (`model.cto`)
-* **Structured contract representation** (JSON)
-* **Validation report** (Structural alignment)
-
-The system is implemented inside a working copy of the **Template Playground** to ensure real usability and integration.
+* **Structured Intermediate Representation (IR)** with logic-aware extraction
+* **Validation report** (structural + logic consistency)
 
 ---
 
@@ -27,22 +25,23 @@ The system is implemented inside a working copy of the **Template Playground** t
 
 This repository contains:
 
-* **Integrated Template Playground**: A copy of the playground featuring the new drafting surface.
-* **Deterministic Drafting Pipeline**: Modular logic located in `src/drafting/`.
-* **UI Integration**: Real-time drafting panel and atomic state updates.
+* **`core/drafting/`**: The standalone, logic-aware drafting pipeline.
+* **`template-playground/`**: An integrated copy of the Accord Template Playground with the drafting panel wired in.
+* **`assets/`**: Documentation screenshots.
 
 ---
 
 ## Quick Navigation
 
-To review the core contributions, focus on these key areas:
-
 | Component | Path |
 | :--- | :--- |
-| **Drafting Pipeline** | `template-playground/src/drafting/` |
+| **Type Definitions (IR)** | `core/drafting/types.ts` |
+| **Extractor** | `core/drafting/extractor.ts` |
+| **Generator** | `core/drafting/generator.ts` |
+| **Validator** | `core/drafting/validator.ts` |
+| **Pipeline Entry Point** | `core/drafting/index.ts` |
 | **UI Integration** | `template-playground/src/components/DraftingPanel.tsx` |
 | **State Management** | `template-playground/src/store/store.ts` |
-| **Page Layout** | `template-playground/src/pages/MainContainer.tsx` |
 
 ---
 
@@ -52,37 +51,79 @@ The Accord ecosystem provides powerful tools for contract execution, but lacks a
 
 * **High learning curve**: New users struggle with TemplateMark and Concerto syntax.
 * **Manual drafting**: Converting intent to models is slow and error-prone.
-* **Fragmented workflow**: No single place to go from "Idea" to "Executable Code".
+* **No logic reasoning**: Existing tools do not extract contract logic (obligations, conditions, deadlines).
 
 ---
 
 ## The Solution
 
-This system introduces a deterministic drafting pipeline that:
+A deterministic drafting pipeline that understands **contract logic**, not just keywords:
 
-1. **Extracts** entities and conditions from natural language using rule-based heuristics.
-2. **Generates** both the text and the model simultaneously to ensure alignment.
-3. **Validates** the relationship between placeholders and schema fields.
-4. **Applies** the results directly into the interactive Playground editors.
+1. **Extracts** parties, obligations, conditions, and temporal constraints from natural language.
+2. **Generates** obligation-driven TemplateMark clauses and a matching Concerto model.
+3. **Validates** structural and logic consistency between template and model.
+4. **Applies** results directly into the Playground editors atomically.
 
 ---
 
 ## High-Level Architecture
 
 1. **Natural Language Brief** (Input)
-2. **Extractor** (Structured Intent)
-3. **Generator** (Mark + Model)
-4. **Validator** (Alignment Check)
-5. **Template Playground** (IDE + Preview)
-6. **Template Engine** (Execution)
+2. **Extractor** → Structured IR (parties, obligations, conditions, temporal)
+3. **Generator** → TemplateMark + Concerto model
+4. **Validator** → Structural + logic alignment report
+5. **Template Playground** → Live IDE preview
+6. **Template Engine** → Contract execution
 
 ---
 
-## Position in the Accord Ecosystem
+## Structured Intermediate Representation (IR)
 
-* **Upstream**: Natural Language Input (Users, Agentic Systems)
-* **This Project**: **Drafting Layer** (Intent to Schema)
-* **Downstream**: Template Playground → Template Engine → Contract Execution
+The core innovation of this project is the **logic-aware IR** that sits between natural language and generated code.
+
+```typescript
+interface ExtractedContract {
+  brief: string;
+  parties: string[];              // buyer, seller, shipper, receiver
+  concepts: string[];             // goods, delivery, payment, penalty
+  obligations: Obligation[];      // actor → action → target
+  conditions: ConditionClause[];  // if / unless / when / in_case
+  temporalConstraints: TemporalConstraint[]; // within / after / before / deadline
+  fields: DraftField[];           // schema-ready typed fields
+}
+```
+
+### Example Extraction
+
+**Input:**
+> Buyer agrees to pay seller within 10 days after delivery. Unless inspection is passed, no payment shall be made.
+
+**Extracted IR:**
+
+| Component | Extracted Value |
+| :--- | :--- |
+| **Obligation** | `buyer → pay → seller` |
+| **Condition** | `[unless] inspection is passed` |
+| **Temporal** | `within 10 days after delivery` |
+
+**Generated Template:**
+```
+Unless {{conditionExpression}}, the terms below shall apply.
+The {{buyer}} shall pay {{seller}} within {{timeAmount}} {{timeUnit}} after {{referenceEvent}}.
+```
+
+**Generated Model:**
+```
+concept DeliveryPayment {
+  o String buyer
+  o String seller
+  o Integer timeAmount
+  o String timeUnit
+  o String referenceEvent
+  o String conditionExpression optional
+  o Boolean inspectionPassed
+}
+```
 
 ---
 
@@ -107,45 +148,40 @@ One of the project's key innovations is the **Structured Intermediate Representa
 
 ## Core Modules
 
-### 1. Extractor
-* Rule-based parsing for high reliability.
-* Detects **Parties** (buyer, seller, etc.), **Time conditions** (days, deadlines), and **Contract concepts** (payment, delivery).
+### 1. Extractor (`extractor.ts`)
+* Detects **Parties**: buyer, seller, shipper, receiver, and aliases.
+* Detects **Obligations**: `agrees to`, `shall`, `must`, `is required to`, `will` patterns.
+* Detects **Conditions**: `if`, `unless`, `when`, `in case of`, `provided that`.
+* Detects **Temporal constraints**: `within N days`, `due in N days`, `after delivery`, `before deadline`.
 
-### 2. Generator
-* Produces **TemplateMark** (grammar format) and **Concerto** models.
-* Generates sample **JSON Data** matching the new model.
+### 2. Generator (`generator.ts`)
+* Builds **obligation-driven clauses**: `The {{buyer}} shall pay {{seller}} within {{timeAmount}} {{timeUnit}} after {{referenceEvent}}.`
+* Builds **conditional blocks**: `Unless {{conditionExpression}}, the terms below shall apply.`
+* Produces matching **Concerto models** with `optional` fields for conditional logic.
 
-### 3. Validator
-* Static analysis of the generated output.
-* Ensures all template variables have matching model fields.
-* Flags unused model fields or missing text placeholders.
-
----
-
-## Example
-
-**Input:**
-> Buyer agrees to pay seller within 10 days after delivery of goods.
-
-**Output:**
-* Template draft with `{{buyer}}`, `{{seller}}`, and `{{paymentDueDays}}`.
-* Concerto model with matching fields.
-* Validation report confirming 100% alignment.
+### 3. Validator (`validator.ts`)
+* **Variable consistency**: every `{{variable}}` in the template must exist in the model.
+* **Temporal logic**: if temporal constraints were extracted, model must have `timeAmount`, `timeUnit`, or `referenceEvent`.
+* **Condition logic**: if conditions were extracted, `conditionExpression` must be in both model and template.
+* **Obligation alignment**: obligation actors must correspond to model fields.
+* **Unused field warnings**: any model field not referenced in the template is flagged.
 
 ---
 
-## Testing
+## Running the Pipeline
 
-The implementation is verified with:
-* **Unit tests** for core logic.
-* **Pipeline tests** for end-to-end flow.
-* **Component tests** for UI interactions.
+```bash
+# Run the smoke test
+cd accord-drafting-layer
+npx vite-node smoke-test.ts
+```
 
-Run tests:
+## Running the Playground
+
 ```bash
 cd template-playground
 npm install
-npm test
+npm run dev
 ```
 
 ---
@@ -153,16 +189,18 @@ npm test
 ## Design Principles
 
 * **Deterministic Pipeline**: Reproducible and testable without external LLM dependencies.
-* **Modular Architecture**: Separate extraction and generation for future scalability.
-* **Minimal Integration**: Reuses existing Playground components to avoid UI bloat.
+* **Logic over Keywords**: The IR captures obligations and conditions, not just noun lists.
+* **Extensible Strategy**: Implement `DraftingStrategy` to plug in LLM-based extraction.
+* **Minimal Integration**: Reuses existing Playground components without UI redesign.
 
 ---
 
 ## Future Work
 
-* **LLM Orchestration**: Integrating agentic strategies for complex legal reasoning.
-* **Clause Libraries**: Selecting existing clauses based on extracted intent.
-* **Multi-agent Workflows**: Collaborative drafting and review.
+* **LLM Orchestration**: Swap rule-based extractor with an LLM-based one via `DraftingStrategy`.
+* **Clause Libraries**: Match extracted concepts to known clause templates.
+* **Multi-agent Workflows**: Collaborative drafting, review, and negotiation agents.
+* **Monetary Extraction**: Parse amounts (e.g., `$500/day`) into typed fields.
 
 ---
 
@@ -174,4 +212,4 @@ This repository includes a snapshot of Template Playground to demonstrate the in
 
 ## Conclusion
 
-This project delivers a working drafting pipeline that establishes a clear path from human intent to executable smart contracts, providing a foundation for intelligent, agentic contract drafting systems.
+This project delivers a logic-aware drafting pipeline that establishes a clear path from human intent to executable smart contracts — going beyond keyword extraction to model the actual legal logic of a contract.
