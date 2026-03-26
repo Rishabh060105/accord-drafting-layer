@@ -59,15 +59,45 @@ function buildIntroduction(extracted: ExtractedContract): string[] {
   return lines;
 }
 
+/**
+ * Resolves the primary boolean field that represents a condition.
+ * Maps condition concepts to the most specific typed field available.
+ */
+const CONDITION_FIELD_MAP: Record<string, string> = {
+  inspection: "inspectionPassed",
+  delivery: "deliveryAccepted",
+};
+
+function resolveBooleanField(expression: string, fields: DraftField[]): string | undefined {
+  // Try to find a matching concept in the expression and map it to a known field
+  for (const [concept, fieldName] of Object.entries(CONDITION_FIELD_MAP)) {
+    if (expression.toLowerCase().includes(concept) && hasField(fields, fieldName)) {
+      return fieldName;
+    }
+  }
+  // Fallback: return the first boolean field available
+  return fields.find((f) => f.type === "Boolean")?.name;
+}
+
 function buildConditionClauses(extracted: ExtractedContract): string[] {
   const { conditions, fields } = extracted;
   const lines: string[] = [];
 
-  if (conditions.length > 0 && hasField(fields, "conditionExpression")) {
-    const firstCond = conditions[0];
-    const keyword = firstCond.type === "in_case" ? "In the event that" : firstCond.type.charAt(0).toUpperCase() + firstCond.type.slice(1);
-    lines.push(`${keyword} {{conditionExpression}}, the terms below shall apply.`);
-  }
+  if (conditions.length === 0) return lines;
+
+  const firstCond = conditions[0];
+  const booleanField = resolveBooleanField(firstCond.expression, fields);
+
+  if (!booleanField) return lines;
+
+  // Determine the correct keyword from the extracted condition type
+  const keyword =
+    firstCond.type === "in_case"
+      ? "In the event that"
+      : firstCond.type.charAt(0).toUpperCase() + firstCond.type.slice(1);
+
+  // Use the typed boolean field directly — no free-text ambiguity
+  lines.push(`${keyword} {{${booleanField}}}, the terms below shall apply.`);
 
   return lines;
 }
@@ -89,7 +119,8 @@ function buildOperationalClauses(extracted: ExtractedContract): string[] {
   if (hasField(fields, "responseHours")) {
     lines.push("Any required response must be provided within {{responseHours}} hours.");
   }
-  if (hasField(fields, "inspectionPassed")) {
+  if (hasField(fields, "inspectionPassed") && !extracted.conditions.length) {
+    // Only use as a standalone clause when there's no condition block already using it
     lines.push("Inspection passed: {{inspectionPassed}}.");
   }
   if (hasField(fields, "penaltyDescription")) {

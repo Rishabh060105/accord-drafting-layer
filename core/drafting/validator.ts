@@ -74,20 +74,28 @@ function checkLogicConsistency(
     }
   }
 
-  // Rule 2: If conditions were extracted, conditionExpression should exist in model and template
+  // Rule 2: If conditions were extracted, a boolean field must be used in the template
   if (extracted.conditions.length > 0) {
-    if (!modelFields.includes("conditionExpression")) {
+    // Look for any boolean field that's used in the template (e.g. inspectionPassed, deliveryAccepted)
+    const booleanFields = modelFields.filter((f) => {
+      const fieldDef = extracted.fields?.find((df) => df.name === f);
+      return fieldDef?.type === "Boolean";
+    });
+    const booleanFieldUsedInTemplate = booleanFields.some((f) => textVariables.includes(f));
+
+    if (!booleanFieldUsedInTemplate) {
       issues.push({
         severity: "warning",
         message:
-          'Conditional phrases were detected in the brief (e.g. "if", "unless") but "conditionExpression" is missing from the model.',
+          'Conditional phrases were detected but no boolean condition field (e.g. "inspectionPassed") was rendered in the template.',
       });
     }
-    if (!textVariables.includes("conditionExpression")) {
+    // Warn if free-text conditionExpression is still in the model (should have been removed)
+    if (modelFields.includes("conditionExpression")) {
       issues.push({
-        severity: "info",
+        severity: "warning",
         message:
-          '"conditionExpression" is in the model but was not rendered in the template text.',
+          '"conditionExpression" (free-text) found in model — prefer a typed Boolean field for condition logic.',
       });
     }
   }

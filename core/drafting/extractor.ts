@@ -265,18 +265,9 @@ function buildFields(
     }
   }
 
-  // Condition expressions
-  for (const cond of conditions) {
-    addField(fields, {
-      name: "conditionExpression",
-      type: "String",
-      source: "condition",
-      description: `Condition clause: ${cond.type} ${cond.expression}`,
-      defaultValue: cond.expression,
-      optional: true,
-    });
-    break; // add once for the primary condition
-  }
+  // NOTE: Conditions are captured by typed boolean fields (e.g. inspectionPassed).
+  // We do NOT add a free-text conditionExpression field — that would be redundant
+  // and logically ambiguous in the generated template.
 
   // Fallback
   if (fields.length === 0) {
