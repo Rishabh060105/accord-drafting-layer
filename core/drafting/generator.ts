@@ -12,56 +12,9 @@ function hasField(fields: DraftField[], name: string): boolean {
   return fields.some((f) => f.name === name);
 }
 
-// ─── Template Text Generation ─────────────────────────────────────────────────
-
-function buildIntroduction(extracted: ExtractedContract): string[] {
-  const { parties, fields, obligations } = extracted;
-  const lines: string[] = [];
-
-  const hasParty = (p: string) => parties.includes(p) && hasField(fields, p);
-
-  // Derive intro from obligations if available, otherwise fall back to parties
-  if (obligations.length > 0) {
-    for (const ob of obligations) {
-      const actor = `{{${ob.actor}}}`;
-      const action = ob.action;
-      // Reference target only if it's a known party field, otherwise omit
-      const targetRef = ob.target && hasField(fields, ob.target) ? ` {{${ob.target}}}` : "";
-      const timeClause = hasField(fields, "timeAmount")
-        ? ` within {{timeAmount}} {{timeUnit}}`
-        : "";
-      const eventClause = hasField(fields, "referenceEvent")
-        ? ` after {{referenceEvent}}`
-        : "";
-
-      lines.push(
-        `The ${actor} shall ${action}${targetRef}${timeClause}${eventClause}.`
-      );
-    }
-  } else {
-    // Fallback to simple party intro
-    if (hasParty("buyer") && hasParty("seller")) {
-      lines.push("This draft agreement is made between {{buyer}} and {{seller}}.");
-    } else if (hasParty("buyer")) {
-      lines.push("This draft agreement names {{buyer}} as the buyer.");
-    } else if (hasParty("seller")) {
-      lines.push("This draft agreement names {{seller}} as the seller.");
-    }
-  }
-
-  if (hasParty("shipper")) {
-    lines.push("The shipper for this transaction is {{shipper}}.");
-  }
-  if (hasParty("receiver")) {
-    lines.push("The receiver for this transaction is {{receiver}}.");
-  }
-
-  return lines;
-}
-
 /**
- * Resolves the primary boolean field that represents a condition.
- * Maps condition concepts to the most specific typed field available.
+ * Maps condition concept keywords to the typed boolean field that represents them.
+ * Always uses positive-semantics naming (inspectionPassed = true means it passed).
  */
 const CONDITION_FIELD_MAP: Record<string, string> = {
   inspection: "inspectionPassed",
@@ -69,41 +22,93 @@ const CONDITION_FIELD_MAP: Record<string, string> = {
 };
 
 function resolveBooleanField(expression: string, fields: DraftField[]): string | undefined {
-  // Try to find a matching concept in the expression and map it to a known field
   for (const [concept, fieldName] of Object.entries(CONDITION_FIELD_MAP)) {
     if (expression.toLowerCase().includes(concept) && hasField(fields, fieldName)) {
       return fieldName;
     }
   }
-  // Fallback: return the first boolean field available
   return fields.find((f) => f.type === "Boolean")?.name;
 }
 
-function buildConditionClauses(extracted: ExtractedContract): string[] {
-  const { conditions, fields } = extracted;
+// ─── Template Text Generation ─────────────────────────────────────────────────
+
+/**
+ * Builds complete obligation clauses — with condition prefix merged in if present.
+ *
+ * Expected output (with condition):
+ *   If {{inspectionPassed}}, the {{buyer}} shall pay {{seller}} within {{timeAmount}} {{timeUnit}} after {{referenceEvent}}.
+ *
+ * Expected output (without condition):
+ *   The {{buyer}} shall pay {{seller}} within {{timeAmount}} {{timeUnit}} after {{referenceEvent}}.
+ */
+function buildObligationClauses(extracted: ExtractedContract): string[] {
+  const { fields, obligations, conditions } = extracted;
   const lines: string[] = [];
 
-  if (conditions.length === 0) return lines;
+  // Resolve primary condition boolean field once
+  const conditionField =
+    conditions.length > 0
+      ? resolveBooleanField(conditions[0].expression, fields)
+      : undefined;
 
-  const firstCond = conditions[0];
-  const booleanField = resolveBooleanField(firstCond.expression, fields);
+  for (const ob of obligations) {
+    // Payee: include target only if it maps to a known party field
+    const targetRef =
+      ob.target && hasField(fields, ob.target) ? ` {{${ob.target}}}` : "";
 
-  if (!booleanField) return lines;
+    // Temporal clause
+    const timeClause = hasField(fields, "timeAmount")
+      ? ` within {{timeAmount}} {{timeUnit}}`
+      : "";
 
-  // Determine the correct keyword from the extracted condition type
-  const keyword =
-    firstCond.type === "in_case"
-      ? "In the event that"
-      : firstCond.type.charAt(0).toUpperCase() + firstCond.type.slice(1);
+    // Event reference
+    const eventClause = hasField(fields, "referenceEvent")
+      ? ` after {{referenceEvent}}`
+      : "";
 
-  // Use the typed boolean field directly — no free-text ambiguity
-  lines.push(`${keyword} {{${booleanField}}}, the terms below shall apply.`);
+    // Core obligation body (no leading article — added by wrapper below)
+    const body = `{{${ob.actor}}} shall ${ob.action}${targetRef}${timeClause}${eventClause}.`;
+
+    // Prefix with "If {{booleanField}}" when a condition exists.
+    // Always use "If" — boolean fields have positive semantics
+    // (inspectionPassed = true means it passed → payment should apply).
+    if (conditionField) {
+      lines.push(`If {{${conditionField}}}, the ${body}`);
+    } else {
+      lines.push(`The ${body}`);
+    }
+  }
+
+  return lines;
+}
+
+function buildFallbackClauses(extracted: ExtractedContract): string[] {
+  const { fields, obligations } = extracted;
+  const lines: string[] = [];
+
+  // Only emit fallback party intro when there are no obligations
+  if (obligations.length === 0) {
+    if (hasField(fields, "buyer") && hasField(fields, "seller")) {
+      lines.push("This draft agreement is made between {{buyer}} and {{seller}}.");
+    } else if (hasField(fields, "buyer")) {
+      lines.push("This draft agreement names {{buyer}} as the buyer.");
+    } else if (hasField(fields, "seller")) {
+      lines.push("This draft agreement names {{seller}} as the seller.");
+    }
+  }
+
+  if (hasField(fields, "shipper")) {
+    lines.push("The shipper for this transaction is {{shipper}}.");
+  }
+  if (hasField(fields, "receiver")) {
+    lines.push("The receiver for this transaction is {{receiver}}.");
+  }
 
   return lines;
 }
 
 function buildOperationalClauses(extracted: ExtractedContract): string[] {
-  const { fields } = extracted;
+  const { fields, obligations, conditions } = extracted;
   const lines: string[] = [];
 
   if (hasField(fields, "goodsDescription")) {
@@ -112,15 +117,15 @@ function buildOperationalClauses(extracted: ExtractedContract): string[] {
   if (hasField(fields, "deliveryDate")) {
     lines.push("Delivery is scheduled for {{deliveryDate}}.");
   }
-  if (hasField(fields, "timeAmount") && !extracted.obligations.length) {
-    // Only emit a generic payment clause if no obligation already covered it
+  // Emit payment clause only if no obligation already covers it
+  if (hasField(fields, "timeAmount") && obligations.length === 0) {
     lines.push("Payment is due within {{timeAmount}} {{timeUnit}} after {{referenceEvent}}.");
   }
   if (hasField(fields, "responseHours")) {
     lines.push("Any required response must be provided within {{responseHours}} hours.");
   }
-  if (hasField(fields, "inspectionPassed") && !extracted.conditions.length) {
-    // Only use as a standalone clause when there's no condition block already using it
+  // Emit standalone inspectionPassed only when not already used in a condition clause
+  if (hasField(fields, "inspectionPassed") && conditions.length === 0) {
     lines.push("Inspection passed: {{inspectionPassed}}.");
   }
   if (hasField(fields, "penaltyDescription")) {
@@ -137,8 +142,8 @@ function buildTemplateText(contractName: string, extracted: ExtractedContract): 
   const sections = [
     `# ${toHeadline(contractName)}`,
     "",
-    ...buildConditionClauses(extracted),
-    ...buildIntroduction(extracted),
+    ...buildObligationClauses(extracted),
+    ...buildFallbackClauses(extracted),
     ...buildOperationalClauses(extracted),
   ].filter((line, index, lines) => {
     if (line !== "") return true;
@@ -150,12 +155,27 @@ function buildTemplateText(contractName: string, extracted: ExtractedContract): 
 
 // ─── Model Generation ─────────────────────────────────────────────────────────
 
+/**
+ * Determines which fields are actually used in the template text,
+ * then builds the model with only those fields (plus required party fields).
+ * This prevents model / template misalignment.
+ */
 function buildModelText(
   contractName: string,
   namespace: string,
-  fields: DraftField[]
+  fields: DraftField[],
+  templateText: string
 ): string {
-  const fieldLines = fields.map(
+  const usedInTemplate = new Set(
+    [...templateText.matchAll(/\{\{\s*([A-Za-z_][A-Za-z0-9_]*)\s*\}\}/g)].map((m) => m[1])
+  );
+
+  // Include a field if it's referenced in the template OR if it's non-optional
+  const modelFields = fields.filter(
+    (f) => usedInTemplate.has(f.name) || !f.optional
+  );
+
+  const fieldLines = modelFields.map(
     (f) => `  o ${f.type} ${f.name}${f.optional ? " optional" : ""}`
   );
 
@@ -175,16 +195,23 @@ function buildModelText(
 function buildSampleData(
   contractName: string,
   namespace: string,
-  fields: DraftField[]
+  fields: DraftField[],
+  templateText: string
 ): Record<string, string | boolean | number> {
+  const usedInTemplate = new Set(
+    [...templateText.matchAll(/\{\{\s*([A-Za-z_][A-Za-z0-9_]*)\s*\}\}/g)].map((m) => m[1])
+  );
+
   const data: Record<string, string | boolean | number> = {
     $class: `${namespace}.${contractName}`,
   };
+
   for (const field of fields) {
-    if (!field.optional) {
+    if (usedInTemplate.has(field.name)) {
       data[field.name] = field.defaultValue;
     }
   }
+
   return data;
 }
 
@@ -199,8 +226,9 @@ export function generateDraftTemplate(extracted: ExtractedContract): DraftTempla
   const namespace = DEFAULT_NAMESPACE;
 
   const templateText = buildTemplateText(contractName, extracted);
-  const modelText = buildModelText(contractName, namespace, extracted.fields);
-  const sampleData = buildSampleData(contractName, namespace, extracted.fields);
+  // Model is built AFTER template so unused fields are automatically excluded
+  const modelText = buildModelText(contractName, namespace, extracted.fields, templateText);
+  const sampleData = buildSampleData(contractName, namespace, extracted.fields, templateText);
 
   return {
     contractName,

@@ -107,26 +107,53 @@ function detectObligations(rawText: string, parties: string[]): Obligation[] {
   const obligations: Obligation[] = [];
   const knownParties = new Set(parties);
 
-  // Pattern: <actor> (shall|must|agrees to|will) <action> [... to/for <target>]
-  const regex =
-    /(\b\w+\b)\s+(?:agrees to|shall|must|is required to|is obligated to|will)\s+(\w+)(?:[^,.]*?\s+(?:to|for)\s+(\w+))?/gi;
+  // Simple verb stemmer: strip -s suffix to get base form (pay, deliver, etc.)
+  const stem = (verb: string) => verb.replace(/s$/, "");
 
-  let match: RegExpExecArray | null;
-  while ((match = regex.exec(rawText)) !== null) {
-    const actor = match[1].toLowerCase();
-    const action = match[2].toLowerCase();
-    const target = match[3]?.toLowerCase();
-
-    // Only emit obligations where the actor is a known party or a plausible legal subject
-    if (knownParties.has(actor) || /^(the|a|an)$/.test(actor)) {
-      const ob: Obligation = { actor, action };
-      if (target && target !== action) ob.target = target;
-      obligations.push(ob);
+  function addObligation(
+    actor: string,
+    action: string,
+    directObj: string | undefined,
+    prepTarget: string | undefined
+  ): void {
+    if (!knownParties.has(actor)) return;
+    const ob: Obligation = { actor, action: stem(action) };
+    if (prepTarget && knownParties.has(prepTarget)) {
+      ob.target = prepTarget;
+    } else if (directObj && knownParties.has(directObj)) {
+      ob.target = directObj;
     }
+    obligations.push(ob);
+  }
+
+  // Pattern 1: modal obligation — "buyer shall/must/agrees to/will pay seller"
+  //   (1) actor, (2) action, (3) directObj, (4) prepTarget
+  const modalRegex =
+    /(\b\w+\b)\s+(?:agrees to|shall|must|is required to|is obligated to|will)\s+(\w+)\s*(\w+)?(?:[^,.]*?\s+(?:to|for)\s+(\w+))?/gi;
+
+  for (const m of rawText.matchAll(new RegExp(modalRegex.source, "gi"))) {
+    addObligation(
+      m[1].toLowerCase(), m[2].toLowerCase(), m[3]?.toLowerCase(), m[4]?.toLowerCase()
+    );
+  }
+
+  // Pattern 2: simple present tense — "buyer pays seller", "buyer pays seller within..."
+  // Matches known obligation verbs in 3rd person (pays, delivers, remits, etc.)
+  const OBLIGATION_VERBS = "pays|delivers|remits|transfers|reimburses|compensates|notifies|provides";
+  const presentRegex = new RegExp(
+    `(\\b\\w+\\b)\\s+(${OBLIGATION_VERBS})\\s*(\\w+)?(?:[^,.]*?\\s+(?:to|for)\\s+(\\w+))?`,
+    "gi"
+  );
+
+  for (const m of rawText.matchAll(presentRegex)) {
+    addObligation(
+      m[1].toLowerCase(), m[2].toLowerCase(), m[3]?.toLowerCase(), m[4]?.toLowerCase()
+    );
   }
 
   return obligations;
 }
+
 
 function detectTemporalConstraints(rawText: string): TemporalConstraint[] {
   const results: TemporalConstraint[] = [];
@@ -169,19 +196,6 @@ function buildFields(
       source: "party",
       description: `${party.charAt(0).toUpperCase() + party.slice(1)} party name`,
       defaultValue: party.charAt(0).toUpperCase() + party.slice(1),
-    });
-  }
-
-  // Obligation actions — stored as optional metadata fields
-  for (const ob of obligations) {
-    const fieldName = `${ob.actor}Obligation`;
-    addField(fields, {
-      name: fieldName,
-      type: "String",
-      source: "obligation",
-      description: `${ob.actor} is obligated to ${ob.action}${ob.target ? " " + ob.target : ""}`,
-      defaultValue: ob.action,
-      optional: true,
     });
   }
 

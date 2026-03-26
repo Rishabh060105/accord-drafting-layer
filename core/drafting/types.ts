@@ -82,6 +82,7 @@ export interface ValidationIssue {
 
 export interface ValidationReport {
   isValid: boolean;
+  verdict: "Valid" | "Valid with warnings" | "Invalid";
   textVariables: string[];
   modelFields: string[];
   missingInModel: string[];
